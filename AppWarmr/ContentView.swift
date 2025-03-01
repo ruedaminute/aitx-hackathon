@@ -11,25 +11,38 @@ import AVFoundation
 struct ContentView: View {
     @State private var captureSession: AVCaptureSession?
     @State private var previewLayer: AVCaptureVideoPreviewLayer?
-
+    @State private var photoOutput = AVCapturePhotoOutput()
+    @State private var capturedImage: UIImage?
+    @StateObject private var photoCaptureDelegate = PhotoCaptureDelegate()
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-            Button("Start") {
-
-            }
+        ZStack {
             if let previewLayer = previewLayer {
                 CameraPreview(previewLayer: previewLayer)
                     .edgesIgnoringSafeArea(.all)
+                
+                VStack {
+                    Spacer()
+                    Button(action: {
+                        takePhoto()
+                    }) {
+                        Image(systemName: "camera.circle.fill")
+                            .resizable()
+                            .frame(width: 70, height: 70)
+                            .foregroundColor(.white)
+                            .padding(.bottom, 30)
+                    }
+                }
             }
         }
-        .padding()
         .onAppear {
             startCamera()
         }
+    }
+    
+    func takePhoto() {
+        let settings = AVCapturePhotoSettings()
+        photoOutput.capturePhoto(with: settings, delegate: photoCaptureDelegate)
     }
 
     func startCamera() {
@@ -48,6 +61,11 @@ struct ContentView: View {
             session.addInput(input)
         }
         
+        // Add photo output
+        if session.canAddOutput(photoOutput) {
+            session.addOutput(photoOutput)
+        }
+        
         // Create preview layer
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
@@ -60,6 +78,20 @@ struct ContentView: View {
         // Store session and preview layer
         self.captureSession = session
         self.previewLayer = previewLayer
+    }
+}
+
+class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableObject {
+    @Published var capturedImage: UIImage?
+    
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        if let imageData = photo.fileDataRepresentation(),
+           let image = UIImage(data: imageData) {
+            DispatchQueue.main.async {
+                self.capturedImage = image
+                print("Photo captured!")
+            }
+        }
     }
 }
 
