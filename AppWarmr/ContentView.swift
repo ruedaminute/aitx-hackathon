@@ -431,12 +431,28 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(ServiceKeys.openAIApiKey)", forHTTPHeaderField: "Authorization")
         
-        // Update the prompt to include business and customer info
+        // Update the prompt to ask for justification and return JSON with an example
         let promptText: String
         if let response = groqResponse {
-            promptText = "Does this image contain content that fits the following description? \(response) Please just answer yes or no."
+            promptText = """
+            Does this image contain content that fits the following description? \(response)
+            
+            Please respond with JSON in the following format:
+            {
+                "answer": "yes" or "no",
+                "justification": "Your reasoning explaining why the image does or doesn't match the description"
+            }
+            """
         } else {
-            promptText = "Does this image contain a girl or woman? Please just answer yes or no."
+            promptText = """
+            Does this image contain a girl or woman?
+            
+            Please respond with JSON in the following format:
+            {
+                "answer": "yes" or "no",
+                "justification": "Your reasoning explaining why you identified a girl/woman or not in the image"
+            }
+            """
         }
         
         let payload: [String: Any] = [
@@ -459,7 +475,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
                 ]
             ],
             "response_format": [
-                "type": "text"
+                "type": "json_object" // Change to JSON format
             ],
             "temperature": 1,
             "max_tokens": 2048,
@@ -506,28 +522,82 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
             return
         }
         
-        print("OpenAI Analysis: \(content)")
-        
-        // Check if the image contains a girl/woman and play sound if it does
-        if content.lowercased().contains("yes") {
-            print("Relevant content detected in the image")
-            SoundManager.playSound(fileName: "double_tap")
-            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10)) {
+        // Parse the JSON content from the response
+        do {
+            if let contentData = content.data(using: .utf8),
+               let jsonResponse = try JSONSerialization.jsonObject(with: contentData) as? [String: Any] {
+                
+                // Extract answer and justification
+                let containsContent = (jsonResponse["answer"] as? String)?.lowercased() ?? ""
+                let justification = jsonResponse["justification"] as? String ?? "No justification provided"
+                
+                print("OpenAI Analysis: \(containsContent)")
+                print("Justification: \(justification)")
+                
+                // Check if the image contains relevant content and play sound if it does
+                if containsContent.contains("yes") {
+                    print("Relevant content detected in the image")
+                    SoundManager.playSound(fileName: "double_tap")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10)) {
+                        SoundManager.playSound(fileName: "scroll_down")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+                            self?.captureNewImage()
+                        }
+                    }
+                } else if containsContent.contains("no") {
+                    SoundManager.playSound(fileName: "scroll_down")
+                    // Auto-capture another image after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+                        self?.captureNewImage()
+                    }
+                } else {
+                    SoundManager.playSound(fileName: "scroll_down")
+                    // Handle unexpected response
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) { [weak self] in
+                        self?.captureNewImage()
+                    }
+                }
+            } else {
+                // Fallback for non-JSON responses (should not happen with response_format set to json_object)
+                let containsYes = content.lowercased().contains("yes")
+                
+                if containsYes {
+                    print("Relevant content detected in the image (fallback parsing)")
+                    SoundManager.playSound(fileName: "double_tap")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10)) {
+                        SoundManager.playSound(fileName: "scroll_down")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                            self?.captureNewImage()
+                        }
+                    }
+                } else {
+                    SoundManager.playSound(fileName: "scroll_down")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                        self?.captureNewImage()
+                    }
+                }
+            }
+        } catch {
+            print("Error parsing JSON content: \(error)")
+            
+            // Fallback to simple text parsing
+            let containsYes = content.lowercased().contains("yes")
+            
+            if containsYes {
+                SoundManager.playSound(fileName: "double_tap")
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10)) {
+                    SoundManager.playSound(fileName: "scroll_down")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                        self?.captureNewImage()
+                    }
+                }
+            } else {
                 SoundManager.playSound(fileName: "scroll_down")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
                     self?.captureNewImage()
                 }
             }
-        } else if content.lowercased().contains("no") {
-            SoundManager.playSound(fileName: "scroll_down")
-            // Auto-capture another image after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
-                self?.captureNewImage()
-            }
-        } else {
-            SoundManager.playSound(fileName: "scroll_down")
         }
-        // Here you can further process the analysis, display it to the user, etc.
     }
     
     // New function to trigger a new photo capture
