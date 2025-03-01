@@ -89,6 +89,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
            let image = UIImage(data: imageData) {
             DispatchQueue.main.async {
                 self.capturedImage = image
+              SoundManager.playSound(fileName: "double_tap")
                 print("Photo captured!")
             }
         }
