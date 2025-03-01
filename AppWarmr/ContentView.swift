@@ -79,6 +79,12 @@ struct ContentView: View {
                     onComplete: {
                         photoCaptureDelegate.businessInfo = businessInfo
                         photoCaptureDelegate.idealCustomerInfo = idealCustomerInfo
+                        
+                        // Get Groq response from UserDefaults
+                        if let storedGroqResponse = UserDefaults.standard.string(forKey: "groqResponse") {
+                            photoCaptureDelegate.groqResponse = storedGroqResponse
+                        }
+                        
                         showInfoModal = false
                     }
                 )
@@ -102,6 +108,12 @@ struct ContentView: View {
                 idealCustomerInfo = storedCustomerInfo
                 photoCaptureDelegate.businessInfo = storedBusinessInfo
                 photoCaptureDelegate.idealCustomerInfo = storedCustomerInfo
+                
+                // Also load the stored Groq response
+                if let storedGroqResponse = UserDefaults.standard.string(forKey: "groqResponse") {
+                    photoCaptureDelegate.groqResponse = storedGroqResponse
+                }
+                
                 showInfoModal = false
             } else {
                 // Show modal to collect information
@@ -213,78 +225,153 @@ struct BusinessInfoModal: View {
     @Binding var businessInfo: String
     @Binding var idealCustomerInfo: String
     @Binding var isPresented: Bool
+    @State private var isLoading: Bool = false
+    @State private var groqResponse: String = ""
+    @State private var showGroqResponse: Bool = false
+    
     var onComplete: () -> Void
     
+    // Groq API key - you should store this securely in a production app
+    private let groqApiKey = "YOUR_GROQ_API_KEY"
+    
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Welcome to AppWarmr")
-                .font(.title)
-                .fontWeight(.bold)
-                .padding(.top)
-            
-            VStack(alignment: .leading) {
-                Text("What is your business?")
-                    .fontWeight(.medium)
+        ZStack {
+            VStack(spacing: 20) {
+                Text("Welcome to AcctWarmer")
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.black)
+                    .padding(.top)
                 
-                TextEditor(text: $businessInfo)
-                    .frame(height: 100)
-                    .padding(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                    )
+                if showGroqResponse {
+                    // Display Groq response
+                    ScrollView {
+                        VStack(alignment: .leading) {
+                            Text("Groq Analysis:")
+                                .font(.headline)
+                                .padding(.bottom, 5)
+
+                            Text(groqResponse)
+                                .font(.body)
+                        }
+                        .padding()
+                    }
+                    .frame(height: 300)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(8)
+                    .padding(.horizontal)
+                    
+                    Button(action: {
+                        // Save to UserDefaults and continue
+                        UserDefaults.standard.set(businessInfo, forKey: "businessInfo")
+                        UserDefaults.standard.set(idealCustomerInfo, forKey: "idealCustomerInfo")
+                        UserDefaults.standard.set(groqResponse, forKey: "groqResponse")
+                        onComplete()
+                    }) {
+                        Text("Continue to Camera")
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .frame(width: 200, height: 50)
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                    }
+                    .padding(.bottom)
+                } else {
+                    // Display input form with fixed styling
+                    VStack(alignment: .leading) {
+                        Text("What is your business?")
+                            .fontWeight(.medium)
+                        
+                        // Replace TextEditor with TextField for better appearance
+                        TextField("Describe your business", text: $businessInfo)
+                            .padding()
+                            .frame(height: 100, alignment: .topLeading)
+                            .background(Color(UIColor.systemGray6))
+                            .cornerRadius(8)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal)
+                    
+                    VStack(alignment: .leading) {
+                        Text("What is your ideal customer?")
+                            .fontWeight(.medium)
+                        
+                        // Replace TextEditor with TextField for better appearance
+                        TextField("Describe your ideal customer", text: $idealCustomerInfo)
+                            .padding()
+                            .frame(height: 100, alignment: .topLeading)
+                            .background(Color(UIColor.systemGray6))
+                            .cornerRadius(8)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal)
+                    
+                    Button(action: {
+                        isLoading = true
+                        sendToGroq()
+                    }) {
+                        Text("Continue")
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .frame(width: 200, height: 50)
+                            .background(
+                                businessInfo.isEmpty || idealCustomerInfo.isEmpty 
+                                ? Color.gray 
+                                : Color.blue
+                            )
+                            .cornerRadius(10)
+                    }
+                    .disabled(businessInfo.isEmpty || idealCustomerInfo.isEmpty || isLoading)
+                    .padding(.bottom)
+                }
             }
-            .padding(.horizontal)
+            .background(Color.white)
+            .cornerRadius(15)
             
-            VStack(alignment: .leading) {
-                Text("What is your ideal customer?")
-                    .fontWeight(.medium)
+            if isLoading {
+                Color.black.opacity(0.3)
+                    .edgesIgnoringSafeArea(.all)
                 
-                TextEditor(text: $idealCustomerInfo)
-                    .frame(height: 100)
-                    .padding(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                    )
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
             }
-            .padding(.horizontal)
-            
-            Button(action: {
-                // Save to UserDefaults when the button is clicked
-                UserDefaults.standard.set(businessInfo, forKey: "businessInfo")
-                UserDefaults.standard.set(idealCustomerInfo, forKey: "idealCustomerInfo")
-                onComplete()
-            }) {
-                Text("Continue")
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .frame(width: 200, height: 50)
-                    .background(
-                        businessInfo.isEmpty || idealCustomerInfo.isEmpty 
-                        ? Color.gray 
-                        : Color.blue
-                    )
-                    .cornerRadius(10)
+        }
+    }
+    
+    private func sendToGroq() {
+        Task {
+            do {
+                let response = try await LLMService.sendToGroq(businessInfo: businessInfo, idealCustomerInfo: idealCustomerInfo)
+                
+                // Update the UI on the main thread
+                await MainActor.run {
+                    isLoading = false
+                    groqResponse = response
+                    showGroqResponse = true
+                }
+            } catch {
+                // Handle errors
+                await MainActor.run {
+                    isLoading = false
+                    groqResponse = "Error: \(error.localizedDescription)"
+                    showGroqResponse = true
+                }
             }
-            .disabled(businessInfo.isEmpty || idealCustomerInfo.isEmpty)
-            .padding(.bottom)
         }
     }
 }
 
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableObject {
     @Published var capturedImage: UIImage?
+
     // Reference to ContentView to trigger photo capture
     var contentView: ContentView?
     
     // Add properties for business and customer info
     var businessInfo: String = ""
     var idealCustomerInfo: String = ""
+    var groqResponse: String? = nil
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let imageData = photo.fileDataRepresentation(),
@@ -315,12 +402,12 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(openAIApiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(ServiceKeys.openAIApiKey)", forHTTPHeaderField: "Authorization")
         
         // Update the prompt to include business and customer info
         let promptText: String
-        if !businessInfo.isEmpty && !idealCustomerInfo.isEmpty {
-            promptText = "My business is: \(businessInfo). My ideal customer is: \(idealCustomerInfo). Does this image contain a girl or woman? Also, would this content appeal to my ideal customer? Please just answer yes or no to both questions."
+        if let response = groqResponse {
+            promptText = "Does this image contain anything depicted in the following list? \(response) Please just answer yes or no."
         } else {
             promptText = "Does this image contain a girl or woman? Please just answer yes or no."
         }
@@ -380,8 +467,6 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         }
         task.resume()
     }
-  
-  //do you think this post is the kind of post a target customer would enjoy for this business?
     
     private func handleOpenAIResponse(_ response: [String: Any]) {
         print("OpenAI Response: \(response)")
@@ -398,22 +483,22 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         
         // Check if the image contains a girl/woman and play sound if it does
         if content.lowercased().contains("yes") {
-            print("Girl/woman detected in the image")
+            print("Relevant content detected in the image")
             SoundManager.playSound(fileName: "double_tap")
-          DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(8)) {
-            SoundManager.playSound(fileName: "scroll_down")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
-                self?.captureNewImage()
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10)) {
+                SoundManager.playSound(fileName: "scroll_down")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                    self?.captureNewImage()
+                }
             }
-          }
         } else if content.lowercased().contains("no") {
             SoundManager.playSound(fileName: "scroll_down")
             // Auto-capture another image after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
                 self?.captureNewImage()
             }
         } else {
-          SoundManager.playSound(fileName: "scroll_down")
+            SoundManager.playSound(fileName: "scroll_down")
         }
         // Here you can further process the analysis, display it to the user, etc.
     }
