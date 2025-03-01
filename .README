@@ -1,0 +1,7 @@
+If you are familiar with creating UGC content, you know that you have to "warm up" social media accounts before using them to promote a new product. This process can be very tedious especially if you are not a big social media fan :D AppWarmer takes your business description, a description of your ideal customer, and then uses Llama over Groq to generate a list of the type of content your ideal customer would enjoy. It does this by using another device to control your main device using iOS voice control and the camera. Using these, it then scrolls TikTok on your behalf and warms up your account for you, so you can get back to building! 
+
+Video demo: https://youtu.be/DGjRvJGmfAg
+
+In the first part of the video, I show the UI where you can put in a business description and customer profile. Afterwards, I am holding the phone so it can see the other phone but am doing nothing else. This could also have been done with a stand. Everything is completely automated.
+
+Demo logs are available: demo-logs.txt
