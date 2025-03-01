@@ -29,6 +29,9 @@ struct ContentView: View {
                             zoomFactor = min(max(value, 1.0), 5.0)
                         }
                     )
+                    .onTapGesture { location in
+                        focusCamera(at: location)
+                    }
                 
                 VStack {
                     Spacer()
@@ -58,11 +61,25 @@ struct ContentView: View {
         // Set up the camera session
         let session = AVCaptureSession()
         
-        // Get the front camera
-        guard let frontCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
-              let input = try? AVCaptureDeviceInput(device: frontCamera) else {
-            print("Failed to access front camera")
+        // Get the rear camera instead of front camera
+        guard let rearCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: rearCamera) else {
+            print("Failed to access rear camera")
             return
+        }
+        
+        // Configure camera for better focus
+        do {
+            try rearCamera.lockForConfiguration()
+            if rearCamera.isFocusModeSupported(.continuousAutoFocus) {
+                rearCamera.focusMode = .continuousAutoFocus
+            }
+            if rearCamera.isExposureModeSupported(.continuousAutoExposure) {
+                rearCamera.exposureMode = .continuousAutoExposure
+            }
+            rearCamera.unlockForConfiguration()
+        } catch {
+            print("Error configuring camera: \(error.localizedDescription)")
         }
         
         // Add input to session
@@ -101,6 +118,34 @@ struct ContentView: View {
             device.unlockForConfiguration()
         } catch {
             print("Error setting zoom: \(error.localizedDescription)")
+        }
+    }
+    
+    private func focusCamera(at tapLocation: CGPoint) {
+        guard let device = (captureSession?.inputs.first as? AVCaptureDeviceInput)?.device else { return }
+        
+        let viewSize = UIScreen.main.bounds.size
+        let focusPoint = CGPoint(
+            x: tapLocation.y / viewSize.height,
+            y: 1.0 - tapLocation.x / viewSize.width
+        )
+        
+        do {
+            try device.lockForConfiguration()
+            
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = focusPoint
+                device.focusMode = .autoFocus
+            }
+            
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = focusPoint
+                device.exposureMode = .autoExpose
+            }
+            
+            device.unlockForConfiguration()
+        } catch {
+            print("Error setting focus: \(error.localizedDescription)")
         }
     }
 }
