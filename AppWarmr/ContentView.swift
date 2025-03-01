@@ -14,12 +14,21 @@ struct ContentView: View {
     @State private var photoOutput = AVCapturePhotoOutput()
     @State private var capturedImage: UIImage?
     @StateObject private var photoCaptureDelegate = PhotoCaptureDelegate()
+    @State private var zoomFactor: CGFloat = 1.0
     
     var body: some View {
         ZStack {
             if let previewLayer = previewLayer {
                 CameraPreview(previewLayer: previewLayer)
                     .edgesIgnoringSafeArea(.all)
+                    .gesture(MagnificationGesture()
+                        .onChanged { value in
+                            zoom(factor: value)
+                        }
+                        .onEnded { value in
+                            zoomFactor = min(max(value, 1.0), 5.0)
+                        }
+                    )
                 
                 VStack {
                     Spacer()
@@ -78,6 +87,21 @@ struct ContentView: View {
         // Store session and preview layer
         self.captureSession = session
         self.previewLayer = previewLayer
+    }
+    
+    private func zoom(factor: CGFloat) {
+        guard let device = (captureSession?.inputs.first as? AVCaptureDeviceInput)?.device else { return }
+        
+        do {
+            try device.lockForConfiguration()
+            
+            let zoomScale = min(max(factor, 1.0), device.activeFormat.videoMaxZoomFactor)
+            device.videoZoomFactor = zoomScale
+            
+            device.unlockForConfiguration()
+        } catch {
+            print("Error setting zoom: \(error.localizedDescription)")
+        }
     }
 }
 
