@@ -160,12 +160,113 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
                 self.capturedImage = image
                 SoundManager.playSound(fileName: "double_tap")
                 
-                // Save to photo library
-              UIImageWriteToSavedPhotosAlbum(image, self, #selector(self.saveComplete), nil)
+                // Save to photo library and analyze with Vision API
+                UIImageWriteToSavedPhotosAlbum(image, self, #selector(self.saveComplete), nil)
+              self.analyzeImageWithVision(image)
                 
                 print("Photo captured!")
             }
         }
+    }
+    
+    private func analyzeImageWithVision(_ image: UIImage) {
+        // Convert image to base64
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            print("Failed to convert image to data")
+            return
+        }
+        let base64String = imageData.base64EncodedString()
+        
+        // Prepare the API request
+        let apiKey = "AIzaSyAp94BUod4Yv8qAMVOvnoaD6Vqvff4R9FI"
+        guard let url = URL(string: "https://vision.googleapis.com/v1/images:annotate?key=\(apiKey)") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let payload: [String: Any] = [
+            "requests": [
+                [
+                    "image": [
+                        "content": base64String
+                    ],
+                    "features": [
+                        [
+                            "type": "LABEL_DETECTION",
+                            "maxResults": 10
+                        ],
+                        [
+                            "type": "TEXT_DETECTION"
+                        ],
+                        [
+                            "type": "OBJECT_LOCALIZATION"
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } catch {
+            print("Error creating request body: \(error)")
+            return
+        }
+        
+        // Send the request
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Error sending image to Vision API: \(error)")
+                return
+            }
+            
+            if let data = data,
+               let response = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                // Process the response
+                DispatchQueue.main.async {
+                    self.handleVisionResponse(response)
+                }
+            }
+        }
+        task.resume()
+    }
+    
+    private func handleVisionResponse(_ response: [String: Any]) {
+        guard let responses = response["responses"] as? [[String: Any]],
+              let firstResponse = responses.first else {
+            print("Invalid response format")
+            return
+        }
+        
+        // Process labels
+        if let labelAnnotations = firstResponse["labelAnnotations"] as? [[String: Any]] {
+            for label in labelAnnotations {
+                if let description = label["description"] as? String,
+                   let score = label["score"] as? Double {
+                    print("Label: \(description), Confidence: \(score)")
+                }
+            }
+        }
+        
+        // Process text
+        if let textAnnotations = firstResponse["textAnnotations"] as? [[String: Any]],
+           let firstText = textAnnotations.first,
+           let text = firstText["description"] as? String {
+            print("Detected text: \(text)")
+        }
+        
+        // Process objects
+        if let localizedObjects = firstResponse["localizedObjectAnnotations"] as? [[String: Any]] {
+            for object in localizedObjects {
+                if let name = object["name"] as? String,
+                   let score = object["score"] as? Double {
+                    print("Object: \(name), Confidence: \(score)")
+                }
+            }
+        }
+      
+      print("yo")
     }
     
     @objc func saveComplete(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
