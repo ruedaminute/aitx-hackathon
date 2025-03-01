@@ -16,6 +16,11 @@ struct ContentView: View {
     @StateObject private var photoCaptureDelegate = PhotoCaptureDelegate()
     @State private var zoomFactor: CGFloat = 1.0
     
+    // Add states for the information modal
+    @State private var showInfoModal: Bool = false
+    @State private var businessInfo: String = ""
+    @State private var idealCustomerInfo: String = ""
+    
     var body: some View {
         ZStack {
             if let previewLayer = previewLayer {
@@ -34,6 +39,21 @@ struct ContentView: View {
                     }
                 
                 VStack {
+                    HStack {
+                        Spacer()
+                        // Add the question mark button
+                        Button(action: {
+                            showInfoModal = true
+                        }) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .resizable()
+                                .frame(width: 40, height: 40)
+                                .foregroundColor(.white)
+                                .padding(.top, 50)
+                                .padding(.trailing, 20)
+                        }
+                    }
+                    
                     Spacer()
                     Button(action: {
                         takePhoto()
@@ -46,10 +66,47 @@ struct ContentView: View {
                     }
                 }
             }
+            
+            // Show the information collection modal when needed
+            if showInfoModal {
+                Color.black.opacity(0.5)
+                    .edgesIgnoringSafeArea(.all)
+                
+                BusinessInfoModal(
+                    businessInfo: $businessInfo,
+                    idealCustomerInfo: $idealCustomerInfo,
+                    isPresented: $showInfoModal,
+                    onComplete: {
+                        photoCaptureDelegate.businessInfo = businessInfo
+                        photoCaptureDelegate.idealCustomerInfo = idealCustomerInfo
+                        showInfoModal = false
+                    }
+                )
+                .frame(width: UIScreen.main.bounds.width * 0.9)
+                .background(Color.white)
+                .cornerRadius(15)
+                .shadow(radius: 10)
+                .padding()
+            }
         }
         .onAppear {
             startCamera()
             photoCaptureDelegate.contentView = self
+            
+            // Check if business and customer info already exists in UserDefaults
+            if let storedBusinessInfo = UserDefaults.standard.string(forKey: "businessInfo"),
+               let storedCustomerInfo = UserDefaults.standard.string(forKey: "idealCustomerInfo"),
+               !storedBusinessInfo.isEmpty, !storedCustomerInfo.isEmpty {
+                // Use stored values
+                businessInfo = storedBusinessInfo
+                idealCustomerInfo = storedCustomerInfo
+                photoCaptureDelegate.businessInfo = storedBusinessInfo
+                photoCaptureDelegate.idealCustomerInfo = storedCustomerInfo
+                showInfoModal = false
+            } else {
+                // Show modal to collect information
+                showInfoModal = true
+            }
         }
     }
     
@@ -151,10 +208,83 @@ struct ContentView: View {
     }
 }
 
+// Create a new struct for the business info modal
+struct BusinessInfoModal: View {
+    @Binding var businessInfo: String
+    @Binding var idealCustomerInfo: String
+    @Binding var isPresented: Bool
+    var onComplete: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Welcome to AppWarmr")
+                .font(.title)
+                .fontWeight(.bold)
+                .padding(.top)
+            
+            VStack(alignment: .leading) {
+                Text("What is your business?")
+                    .fontWeight(.medium)
+                
+                TextEditor(text: $businessInfo)
+                    .frame(height: 100)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                    )
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+            }
+            .padding(.horizontal)
+            
+            VStack(alignment: .leading) {
+                Text("What is your ideal customer?")
+                    .fontWeight(.medium)
+                
+                TextEditor(text: $idealCustomerInfo)
+                    .frame(height: 100)
+                    .padding(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                    )
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+            }
+            .padding(.horizontal)
+            
+            Button(action: {
+                // Save to UserDefaults when the button is clicked
+                UserDefaults.standard.set(businessInfo, forKey: "businessInfo")
+                UserDefaults.standard.set(idealCustomerInfo, forKey: "idealCustomerInfo")
+                onComplete()
+            }) {
+                Text("Continue")
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .frame(width: 200, height: 50)
+                    .background(
+                        businessInfo.isEmpty || idealCustomerInfo.isEmpty 
+                        ? Color.gray 
+                        : Color.blue
+                    )
+                    .cornerRadius(10)
+            }
+            .disabled(businessInfo.isEmpty || idealCustomerInfo.isEmpty)
+            .padding(.bottom)
+        }
+    }
+}
+
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableObject {
     @Published var capturedImage: UIImage?
     // Reference to ContentView to trigger photo capture
     var contentView: ContentView?
+    
+    // Add properties for business and customer info
+    var businessInfo: String = ""
+    var idealCustomerInfo: String = ""
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let imageData = photo.fileDataRepresentation(),
@@ -187,6 +317,14 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(openAIApiKey)", forHTTPHeaderField: "Authorization")
         
+        // Update the prompt to include business and customer info
+        let promptText: String
+        if !businessInfo.isEmpty && !idealCustomerInfo.isEmpty {
+            promptText = "My business is: \(businessInfo). My ideal customer is: \(idealCustomerInfo). Does this image contain a girl or woman? Also, would this content appeal to my ideal customer? Please just answer yes or no to both questions."
+        } else {
+            promptText = "Does this image contain a girl or woman? Please just answer yes or no."
+        }
+        
         let payload: [String: Any] = [
             "model": "gpt-4o",
             "messages": [
@@ -201,7 +339,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
                         ],
                         [
                             "type": "text",
-                            "text": "Does this image contain a girl or woman? Please just answer yes or no."
+                            "text": promptText
                         ]
                     ]
                 ]
