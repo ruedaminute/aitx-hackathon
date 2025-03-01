@@ -22,7 +22,7 @@ struct LLMService {
       request.setValue("Bearer \(ServiceKeys.groq_key)", forHTTPHeaderField: "Authorization")
       
       // Construct the message
-      let prompt = "My business is \(businessInfo). I think my ideal customer is \(idealCustomerInfo). Can you provide a description of the type of content you think this customer would like on social media? Please do not include any intro text or lists, just a description of the content."
+      let prompt = "My business is \(businessInfo). I think my ideal customer is \(idealCustomerInfo). Can you provide a generalized description of the type of vibe for content you think this customer would like on social media? Please do not make it too specific, more a general feel. Please do not include any intro text or lists, just a description of the content."
       
       // Create the request body
       let payload: [String: Any] = [
