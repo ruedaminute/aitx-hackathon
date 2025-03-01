@@ -282,28 +282,54 @@ struct BusinessInfoModal: View {
                     VStack(alignment: .leading) {
                         Text("What is your business?")
                             .fontWeight(.medium)
+                            .foregroundColor(.black)
                         
-                        // Replace TextEditor with TextField for better appearance
-                        TextField("Describe your business", text: $businessInfo)
-                            .padding()
-                            .frame(height: 100, alignment: .topLeading)
-                            .background(Color(UIColor.systemGray6))
-                            .cornerRadius(8)
-                            .multilineTextAlignment(.leading)
+                        ZStack(alignment: .topLeading) {
+                            TextEditor(text: $businessInfo)
+                                .padding(5)
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(8)
+                                .frame(height: 100)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                                )
+                            
+                            if businessInfo.isEmpty {
+                                Text("Describe your business")
+                                    .foregroundColor(.gray)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 12)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
                     .padding(.horizontal)
                     
                     VStack(alignment: .leading) {
                         Text("What is your ideal customer?")
                             .fontWeight(.medium)
+                            .foregroundColor(.black)
                         
-                        // Replace TextEditor with TextField for better appearance
-                        TextField("Describe your ideal customer", text: $idealCustomerInfo)
-                            .padding()
-                            .frame(height: 100, alignment: .topLeading)
-                            .background(Color(UIColor.systemGray6))
-                            .cornerRadius(8)
-                            .multilineTextAlignment(.leading)
+                        ZStack(alignment: .topLeading) {
+                            TextEditor(text: $idealCustomerInfo)
+                                .padding(5)
+                                .background(Color(UIColor.systemGray6))
+                                .cornerRadius(8)
+                                .frame(height: 100)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+                                )
+                            
+                            if idealCustomerInfo.isEmpty {
+                                Text("Describe your ideal customer")
+                                    .foregroundColor(.gray)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 12)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
                     .padding(.horizontal)
                     
