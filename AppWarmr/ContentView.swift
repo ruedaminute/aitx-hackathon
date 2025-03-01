@@ -132,7 +132,7 @@ struct ContentView: View {
         let session = AVCaptureSession()
         
         // Get the rear camera instead of front camera
-        guard let rearCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+      guard let rearCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: rearCamera) else {
             print("Failed to access rear camera")
             return
@@ -253,6 +253,7 @@ struct BusinessInfoModal: View {
 
                             Text(groqResponse)
                                 .font(.body)
+                                .foregroundColor(.black)
                         }
                         .padding()
                     }
@@ -407,7 +408,7 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         // Update the prompt to include business and customer info
         let promptText: String
         if let response = groqResponse {
-            promptText = "Does this image contain anything depicted in the following list? \(response) Please just answer yes or no."
+            promptText = "Does this image contain content that fits the following description? \(response) Please just answer yes or no."
         } else {
             promptText = "Does this image contain a girl or woman? Please just answer yes or no."
         }
