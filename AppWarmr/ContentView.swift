@@ -113,9 +113,21 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
            let image = UIImage(data: imageData) {
             DispatchQueue.main.async {
                 self.capturedImage = image
-              SoundManager.playSound(fileName: "double_tap")
+                SoundManager.playSound(fileName: "double_tap")
+                
+                // Save to photo library
+              UIImageWriteToSavedPhotosAlbum(image, self, #selector(self.saveComplete), nil)
+                
                 print("Photo captured!")
             }
+        }
+    }
+    
+    @objc func saveComplete(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        if let error = error {
+            print("Error saving photo: \(error.localizedDescription)")
+        } else {
+            print("Photo saved successfully!")
         }
     }
 }

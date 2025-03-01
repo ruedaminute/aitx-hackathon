@@ -4,5 +4,7 @@
 <dict>
     <key>NSCameraUsageDescription</key>
     <string>This app needs camera access to detect temperature changes.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+<string>AppWarmr needs access to save photos to your library</string>
 </dict> 
 </plist>
