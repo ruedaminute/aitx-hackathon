@@ -49,6 +49,7 @@ struct ContentView: View {
         }
         .onAppear {
             startCamera()
+            photoCaptureDelegate.contentView = self
         }
     }
     
@@ -152,24 +153,25 @@ struct ContentView: View {
 
 class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableObject {
     @Published var capturedImage: UIImage?
+    // Reference to ContentView to trigger photo capture
+    var contentView: ContentView?
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let imageData = photo.fileDataRepresentation(),
            let image = UIImage(data: imageData) {
             DispatchQueue.main.async {
                 self.capturedImage = image
-                SoundManager.playSound(fileName: "double_tap")
-                
-                // Save to photo library and analyze with Vision API
+              
+                // Save to photo library and analyze with OpenAI
                 UIImageWriteToSavedPhotosAlbum(image, self, #selector(self.saveComplete), nil)
-              self.analyzeImageWithVision(image)
+                self.analyzeImageWithOpenAI(image)
                 
                 print("Photo captured!")
             }
         }
     }
     
-    private func analyzeImageWithVision(_ image: UIImage) {
+    private func analyzeImageWithOpenAI(_ image: UIImage) {
         // Convert image to base64
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
             print("Failed to convert image to data")
@@ -177,34 +179,41 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         }
         let base64String = imageData.base64EncodedString()
         
-        // Prepare the API request
-        let apiKey = "AIzaSyAp94BUod4Yv8qAMVOvnoaD6Vqvff4R9FI"
-        guard let url = URL(string: "https://vision.googleapis.com/v1/images:annotate?key=\(apiKey)") else { return }
+        // Prepare the OpenAI API request
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else { return }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(openAIApiKey)", forHTTPHeaderField: "Authorization")
         
         let payload: [String: Any] = [
-            "requests": [
+            "model": "gpt-4o",
+            "messages": [
                 [
-                    "image": [
-                        "content": base64String
-                    ],
-                    "features": [
+                    "role": "user",
+                    "content": [
                         [
-                            "type": "LABEL_DETECTION",
-                            "maxResults": 10
+                            "type": "image_url",
+                            "image_url": [
+                                "url": "data:image/jpeg;base64,\(base64String)"
+                            ]
                         ],
                         [
-                            "type": "TEXT_DETECTION"
-                        ],
-                        [
-                            "type": "OBJECT_LOCALIZATION"
+                            "type": "text",
+                            "text": "Does this image contain a girl or woman? Please just answer yes or no."
                         ]
                     ]
                 ]
-            ]
+            ],
+            "response_format": [
+                "type": "text"
+            ],
+            "temperature": 1,
+            "max_tokens": 2048,
+            "top_p": 1,
+            "frequency_penalty": 0,
+            "presence_penalty": 0
         ]
         
         do {
@@ -217,56 +226,64 @@ class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, ObservableO
         // Send the request
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("Error sending image to Vision API: \(error)")
+                print("Error sending image to OpenAI API: \(error)")
                 return
             }
             
             if let data = data,
-               let response = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+               let responseJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 // Process the response
                 DispatchQueue.main.async {
-                    self.handleVisionResponse(response)
+                    self.handleOpenAIResponse(responseJson)
                 }
+            } else if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("Received non-JSON response: \(responseString)")
             }
         }
         task.resume()
     }
+  
+  //do you think this post is the kind of post a target customer would enjoy for this business?
     
-    private func handleVisionResponse(_ response: [String: Any]) {
-        guard let responses = response["responses"] as? [[String: Any]],
-              let firstResponse = responses.first else {
-            print("Invalid response format")
+    private func handleOpenAIResponse(_ response: [String: Any]) {
+        print("OpenAI Response: \(response)")
+        
+        guard let choices = response["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            print("Could not parse OpenAI response")
             return
         }
         
-        // Process labels
-        if let labelAnnotations = firstResponse["labelAnnotations"] as? [[String: Any]] {
-            for label in labelAnnotations {
-                if let description = label["description"] as? String,
-                   let score = label["score"] as? Double {
-                    print("Label: \(description), Confidence: \(score)")
-                }
-            }
-        }
+        print("OpenAI Analysis: \(content)")
         
-        // Process text
-        if let textAnnotations = firstResponse["textAnnotations"] as? [[String: Any]],
-           let firstText = textAnnotations.first,
-           let text = firstText["description"] as? String {
-            print("Detected text: \(text)")
-        }
-        
-        // Process objects
-        if let localizedObjects = firstResponse["localizedObjectAnnotations"] as? [[String: Any]] {
-            for object in localizedObjects {
-                if let name = object["name"] as? String,
-                   let score = object["score"] as? Double {
-                    print("Object: \(name), Confidence: \(score)")
-                }
+        // Check if the image contains a girl/woman and play sound if it does
+        if content.lowercased().contains("yes") {
+            print("Girl/woman detected in the image")
+            SoundManager.playSound(fileName: "double_tap")
+          DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(8)) {
+            SoundManager.playSound(fileName: "scroll_down")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+                self?.captureNewImage()
             }
+          }
+        } else if content.lowercased().contains("no") {
+            SoundManager.playSound(fileName: "scroll_down")
+            // Auto-capture another image after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+                self?.captureNewImage()
+            }
+        } else {
+          SoundManager.playSound(fileName: "scroll_down")
         }
-      
-      print("yo")
+        // Here you can further process the analysis, display it to the user, etc.
+    }
+    
+    // New function to trigger a new photo capture
+    private func captureNewImage() {
+        print("Auto-capturing new image...")
+        contentView?.takePhoto()
     }
     
     @objc func saveComplete(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
